@@ -1,4 +1,4 @@
-module compress
+module webp-to-jpg
 
 go 1.23.0
 

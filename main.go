@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"fmt"
 	"io/fs"
 	"log"
@@ -89,34 +90,36 @@ func CompressImage(path string) error {
 }
 
 func main() {
-	root := "."
+	log.Print("请输入本地目录路径（Windows 格式，如 C:\\Users\\YourName\\Documents）: ")
+
+	// 使用 bufio.Scanner 读取整行（推荐，支持带空格的路径）
+	scanner := bufio.NewScanner(os.Stdin)
+	scanner.Scan()
+	root := scanner.Text()
+	// 可选：去除首尾空格
+	root = strings.TrimSpace(root)
+	if root == "" {
+		log.Println("❌ 路径不能为空！")
+		return
+	}
+	log.Printf("✅ 你输入的路径是: %s\n", root)
 
 	paths := []string{}
 	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 		// 首先，处理可能发生的错误
 		if err != nil {
-			fmt.Printf("访问 %q 失败: %v\n", path, err)
+			log.Printf("访问 %q 失败: %v\n", path, err)
 			return err
 		}
 
 		// 检查当前条目是否是目录
 		if d.IsDir() {
-			fmt.Printf("发现目录: %s\n", path)
+			log.Printf("发现目录: %s\n", path)
 		} else {
 			// 只处理图片
 			suffix := strings.ToLower(filepath.Ext(path))
 			if suffix == ".jpg" || suffix == ".jpeg" || suffix == ".png" || suffix == ".webp" || suffix == ".avif" || suffix == ".tif" || suffix == ".tiff" || suffix == ".gif" {
 				paths = append(paths, path)
-			}
-
-			paths = append(paths, path)
-			info, _ := d.Info()
-			ori := info.Size()
-			if err := CompressImage(path); err != nil {
-				fmt.Printf("压缩 %s 失败: %v\n", path, err)
-			} else {
-				info, _ = os.Stat(path)
-				fmt.Printf("压缩 %s 成功，压缩了%d%%\n", path, 100-int64(info.Size())*100/ori)
 			}
 		}
 
@@ -130,6 +133,17 @@ func main() {
 	}
 
 	log.Printf("共发现%d个图片", len(paths))
+	log.Print("✅ 确定吗？(Y/n) [默认Y]: ")
+
+	scanner2 := bufio.NewScanner(os.Stdin)
+	scanner2.Scan()
+	confirm := strings.ToLower(strings.TrimSpace(scanner2.Text()))
+
+	// 默认回车 = Y
+	if !(confirm == "" || confirm == "y" || confirm == "yes") {
+		return
+	}
+
 	log.Println("开始并发压缩图片……")
 
 	wg := errgroup.Group{}
@@ -137,6 +151,7 @@ func main() {
 	if runtime.NumCPU() > 1 {
 		wg.SetLimit(runtime.NumCPU() / 2)
 	}
+	var size0, size1 int64
 	for _, path := range paths {
 		wg.Go(func() error {
 			defer func() {
@@ -146,10 +161,21 @@ func main() {
 					debug.PrintStack()
 				}
 			}()
-			return CompressImage(path)
+			info, _ := os.Stat(path)
+			ori := info.Size()
+			size0 += ori
+			if err := CompressImage(path); err != nil {
+				log.Printf("压缩 %s 失败: %v\n", path, err)
+			} else {
+				info, _ = os.Stat(path)
+				log.Printf("压缩 %s 成功，压缩了%d%%\n", path, 100-int64(info.Size())*100/ori)
+				size1 += info.Size()
+			}
+			return nil
 		})
 	}
 	if err := wg.Wait(); err != nil {
 		log.Fatalf("压缩图片失败: %s", err)
 	}
+	log.Printf("✅ 压缩完成，共压缩了 %d 个图片，压缩率 %.2f%%\n", len(paths), 100-float64(size1)/float64(size0)*100)
 }
