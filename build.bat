@@ -1,3 +1,3 @@
 go mod tidy
-go build -ldflags="-s -w"  main.go
-upx -9 main.exe
+go build -ldflags="-s -w" compress.go
+upx -9 compress.exe
