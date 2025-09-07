@@ -11,7 +11,7 @@ import (
 	"runtime/debug"
 	"strings"
 
-	"cmd/vendor/golang.org/x/sync/errgroup"
+	"golang.org/x/sync/errgroup"
 )
 
 // CompressImage 使用 libvips 命令行压缩图片，覆盖原文件
