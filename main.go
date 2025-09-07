@@ -7,7 +7,11 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
+	"runtime/debug"
 	"strings"
+
+	"cmd/vendor/golang.org/x/sync/errgroup"
 )
 
 // CompressImage 使用 libvips 命令行压缩图片，覆盖原文件
@@ -87,6 +91,7 @@ func CompressImage(path string) error {
 func main() {
 	root := "."
 
+	paths := []string{}
 	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 		// 首先，处理可能发生的错误
 		if err != nil {
@@ -98,6 +103,13 @@ func main() {
 		if d.IsDir() {
 			fmt.Printf("发现目录: %s\n", path)
 		} else {
+			// 只处理图片
+			suffix := strings.ToLower(filepath.Ext(path))
+			if suffix == ".jpg" || suffix == ".jpeg" || suffix == ".png" || suffix == ".webp" || suffix == ".avif" || suffix == ".tif" || suffix == ".tiff" || suffix == ".gif" {
+				paths = append(paths, path)
+			}
+
+			paths = append(paths, path)
 			info, _ := d.Info()
 			ori := info.Size()
 			if err := CompressImage(path); err != nil {
@@ -115,5 +127,29 @@ func main() {
 	// 检查遍历过程是否出错
 	if err != nil {
 		log.Fatalf("遍历目录失败: %s", err)
+	}
+
+	log.Printf("共发现%d个图片", len(paths))
+	log.Println("开始并发压缩图片……")
+
+	wg := errgroup.Group{}
+	// 限制为核心数的一半
+	if runtime.NumCPU() > 1 {
+		wg.SetLimit(runtime.NumCPU() / 2)
+	}
+	for _, path := range paths {
+		wg.Go(func() error {
+			defer func() {
+				if err := recover(); err != nil {
+					// 记录错误日志
+					log.Printf("goroutine panic: %v\n", err)
+					debug.PrintStack()
+				}
+			}()
+			return CompressImage(path)
+		})
+	}
+	if err := wg.Wait(); err != nil {
+		log.Fatalf("压缩图片失败: %s", err)
 	}
 }
