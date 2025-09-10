@@ -11,8 +11,8 @@ import (
 	"runtime"
 	"runtime/debug"
 	"strings"
+	"sync/atomic"
 
-	// "github.com/davidbyttow/govips/v2/vips"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -90,85 +90,7 @@ func CompressImage(path string) error {
 	return nil
 }
 
-// // CompressImageV2 使用 govips 库压缩图片，覆盖原文件
-// func CompressImageV2(path string) error {
-// 	// 检查文件是否存在
-// 	if _, err := os.Stat(path); os.IsNotExist(err) {
-// 		return fmt.Errorf("file not found: %s", path)
-// 	}
-
-// 	// 从文件加载图片
-// 	img, err := vips.NewImageFromFile(path)
-// 	if err != nil {
-// 		return fmt.Errorf("failed to load image from file: %v", err)
-// 	}
-// 	defer img.Close()
-
-// 	// 移除 metadata
-// 	if err := img.RemoveMetadata(); err != nil {
-// 		// 即使失败也可以继续，只是metadata可能未被移除
-// 		fmt.Printf("Warning: failed to strip metadata from %s: %v\n", path, err)
-// 	}
-
-// 	var imageBytes []byte
-// 	ext := strings.ToLower(filepath.Ext(path))
-
-// 	switch ext {
-// 	case ".jpg", ".jpeg":
-// 		params := vips.NewJpegExportParams()
-// 		params.Quality = 80
-// 		params.StripMetadata = true
-// 		params.OptimizeCoding = true
-// 		imageBytes, _, err = img.ExportJpeg(params)
-
-// 	case ".png":
-// 		params := vips.NewPngExportParams()
-// 		params.StripMetadata = true
-// 		params.Compression = 9
-// 		params.Interlace = true
-// 		params.Palette = true // 注意：此选项可能显著影响颜色质量
-// 		imageBytes, _, err = img.ExportPng(params)
-
-// 	case ".webp":
-// 		params := vips.NewWebpExportParams()
-// 		params.Quality = 80
-// 		params.StripMetadata = true
-// 		imageBytes, _, err = img.ExportWebp(params)
-
-// 	case ".avif":
-// 		params := vips.NewAvifExportParams()
-// 		params.Quality = 50
-// 		params.StripMetadata = true
-// 		imageBytes, _, err = img.ExportAvif(params)
-
-// 	case ".tif", ".tiff":
-// 		params := vips.NewTiffExportParams()
-// 		params.Quality = 80
-// 		params.StripMetadata = true
-// 		params.Compression = vips.TiffCompressionJpeg
-// 		imageBytes, _, err = img.ExportTiff(params)
-
-// 	case ".gif":
-// 		// govips/libvips 的 GIF 保存选项可能不如其他格式丰富
-// 		params := vips.NewGifExportParams()
-// 		imageBytes, _, err = img.ExportGIF(params)
-
-// 	default:
-// 		return fmt.Errorf("unsupported image format: %s", ext)
-// 	}
-
-// 	if err != nil {
-// 		return fmt.Errorf("failed to export image: %v", err)
-// 	}
-
-// 	// 将压缩后的图片数据写回原文件
-// 	return os.WriteFile(path, imageBytes, 0644)
-// }
-
 func main() {
-	// log.Printf("检查环境libvips……\n")
-	// vips.Startup(nil)
-	// defer vips.Shutdown()
 
 	log.Print("请输入本地目录路径（Windows下如 C:\\Users\\YourName\\Documents）: ")
 
@@ -243,13 +165,13 @@ func main() {
 			}()
 			info, _ := os.Stat(path)
 			ori := info.Size()
-			size0 += ori
+			atomic.AddInt64(&size0, ori)
 			if err := CompressImage(path); err != nil {
 				log.Printf("压缩 %s 失败: %v\n", path, err)
 			} else {
 				info, _ = os.Stat(path)
 				log.Printf("压缩 %s 成功，压缩了%d%%\n", path, 100-int64(info.Size())*100/ori)
-				size1 += info.Size()
+				atomic.AddInt64(&size1, info.Size())
 			}
 			return nil
 		})
